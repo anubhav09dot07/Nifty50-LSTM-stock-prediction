@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import pickle
 import os
+from pathlib import Path
 from datetime import datetime, timedelta
 
 # ── Page config ──────────────────────────────────────────
@@ -242,6 +243,11 @@ h1, h2, h3 { color: #e2e8f0; }
 """, unsafe_allow_html=True)
 
 
+APP_DIR = Path(__file__).resolve().parent
+DATA_DIR = APP_DIR / 'data'
+MODELS_DIR = APP_DIR / 'models'
+
+
 # ══════════════════════════════════════════════════════════
 #  HELPERS
 # ══════════════════════════════════════════════════════════
@@ -250,7 +256,7 @@ h1, h2, h3 { color: #e2e8f0; }
 def load_model_keras():
     try:
         from tensorflow.keras.models import load_model
-        return load_model('models/lstm_model.h5')
+        return load_model(MODELS_DIR / 'lstm_model.h5')
     except Exception:
         return None
 
@@ -258,7 +264,7 @@ def load_model_keras():
 def load_artifacts():
     # Artifacts are stored inside processed_data.pkl — no separate file needed
     try:
-        with open('data/processed_data.pkl', 'rb') as f:
+        with open(DATA_DIR / 'processed_data.pkl', 'rb') as f:
             return pickle.load(f)
     except Exception:
         return None
@@ -266,7 +272,7 @@ def load_artifacts():
 @st.cache_data(show_spinner=False)
 def load_processed():
     try:
-        with open('data/processed_data.pkl', 'rb') as f:
+        with open(DATA_DIR / 'processed_data.pkl', 'rb') as f:
             return pickle.load(f)
     except Exception:
         return None
@@ -274,7 +280,7 @@ def load_processed():
 @st.cache_data(show_spinner=False)
 def load_raw():
     try:
-        df = pd.read_csv('data/nifty50_raw.csv', parse_dates=['Date'])
+        df = pd.read_csv(DATA_DIR / 'nifty50_raw.csv', parse_dates=['Date'])
         df = df.sort_values('Date').reset_index(drop=True)
         return df
     except Exception:

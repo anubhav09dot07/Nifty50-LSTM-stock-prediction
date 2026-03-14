@@ -80,6 +80,12 @@ cd "Data  collection"
 python -m streamlit run app.py
 ```
 
+### 5. Deploy on Hugging Face Spaces (Docker)
+1. Create a new Hugging Face Space and choose `Docker` as the SDK.
+2. Point the Space to this GitHub repository.
+3. Hugging Face will build from the included `Dockerfile` and start the Streamlit app automatically on port `7860`.
+4. After each push to `main`, the Space rebuilds and redeploys.
+
 ---
 
 ## Tech Stack
