@@ -1,3 +1,13 @@
+---
+title: Nifty 50 LSTM Predictor
+emoji: 📈
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+startup_duration_timeout: 1h
+---
+
 # Nifty 50 LSTM Stock Price Prediction
 
 A deep learning project that uses an LSTM (Long Short-Term Memory) neural network to predict Nifty 50 index prices, complete with a Streamlit web dashboard for interactive visualization.
