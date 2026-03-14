@@ -21,4 +21,4 @@ COPY --chown=user . .
 
 EXPOSE 7860
 
-CMD ["python", "-m", "streamlit", "run", "Data  collection/app.py", "--server.address=0.0.0.0", "--server.port=7860"]
+CMD ["python", "-m", "streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=7860"]
