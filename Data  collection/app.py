@@ -37,6 +37,22 @@ html, body, [class*="css"] {
     color: var(--apple-text);
 }
 
+body,
+.stApp,
+[data-testid="stAppViewContainer"] {
+    color: var(--apple-text) !important;
+}
+
+.stApp h1,
+.stApp h2,
+.stApp h3,
+.stApp h4,
+.stApp p,
+.stApp span,
+.stApp label {
+    color: var(--apple-text);
+}
+
 .stApp {
     background: radial-gradient(circle at 10% 0%, #ffffff 0%, #f7f7f9 38%, #f1f2f6 100%);
 }
@@ -55,6 +71,19 @@ html, body, [class*="css"] {
 [data-testid="stSidebar"] .stMarkdown h2,
 [data-testid="stSidebar"] .stMarkdown h3 {
     color: var(--apple-text);
+}
+
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span,
+[data-testid="stSidebar"] div {
+    color: var(--apple-text) !important;
+}
+
+[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] + div,
+[data-testid="stSidebar"] .stCheckbox label,
+[data-testid="stSidebar"] .stSelectbox label {
+    color: var(--apple-muted) !important;
 }
 
 .dash-header {
@@ -86,6 +115,10 @@ html, body, [class*="css"] {
     margin: 0;
     color: var(--apple-text);
     font-weight: 700;
+}
+
+.dash-header .dash-title {
+    color: var(--apple-text) !important;
 }
 
 .dash-subtitle {
