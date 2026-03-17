@@ -43,6 +43,8 @@ Stock Prediction/
 - **Chronological validation** with `shuffle=False` for time-series-safe training
 - **Automatic model leaderboard** (RMSE, MAE, MAPE) in prediction notebook and dashboard
 - **Best-model-driven forecasting** for 7 to 60 business days
+- **Apple-inspired Streamlit UI** (clean light theme, SF-style typography, premium card layout)
+- **Model benchmark sections** with rolling MAPE, metric bars, pairwise model-distance heatmap, and baseline comparisons
 - **Streamlit dashboard** with model selection, comparison overlays, forecast download, and technical indicators
 
 ---
@@ -108,6 +110,7 @@ The dashboard now:
 - Lets you choose the active model in the sidebar
 - Supports optional prediction overlay for all models
 - Uses selected model for metrics and forecast download
+- Includes a dedicated **Model Benchmarks** tab for model-vs-model analysis
 
 ### 6. Deploy on Hugging Face Spaces (Docker)
 1. Create a new Hugging Face Space and choose `Docker` as the SDK.

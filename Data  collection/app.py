@@ -6,13 +6,12 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import pickle
-import os
 from pathlib import Path
 from datetime import datetime, timedelta
 
 # ── Page config ──────────────────────────────────────────
 st.set_page_config(
-    page_title="Nifty 50 · LSTM Predictor",
+    page_title="Nifty 50 · Market Intelligence",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -21,223 +20,249 @@ st.set_page_config(
 # ── Custom CSS ────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
+:root {
+    --apple-blue: #0071e3;
+    --apple-bg: #f5f5f7;
+    --apple-surface: #ffffff;
+    --apple-border: #d2d2d7;
+    --apple-text: #1d1d1f;
+    --apple-muted: #6e6e73;
+    --apple-green: #34c759;
+    --apple-red: #ff3b30;
+    --apple-amber: #ff9f0a;
+}
 
-/* ── Base ── */
 html, body, [class*="css"] {
-    font-family: 'Syne', sans-serif;
-    background-color: #080c10;
-    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    color: var(--apple-text);
 }
 
-.stApp { background: #080c10; }
+.stApp {
+    background: radial-gradient(circle at 10% 0%, #ffffff 0%, #f7f7f9 38%, #f1f2f6 100%);
+}
 
-/* ── Sidebar ── */
+[data-testid="stHeader"] {
+    background: transparent;
+}
+
 [data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #0d1117 0%, #0a0f14 100%);
-    border-right: 1px solid #1e2d3d;
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(12px);
+    border-right: 1px solid var(--apple-border);
 }
+
 [data-testid="stSidebar"] .stMarkdown h1,
 [data-testid="stSidebar"] .stMarkdown h2,
 [data-testid="stSidebar"] .stMarkdown h3 {
-    color: #38bdf8;
+    color: var(--apple-text);
 }
 
-/* ── Header ── */
 .dash-header {
-    background: linear-gradient(135deg, #0d1b2a 0%, #0f2338 50%, #0a1628 100%);
-    border: 1px solid #1e3a5f;
-    border-radius: 16px;
-    padding: 32px 40px;
+    background: linear-gradient(130deg, #ffffff 0%, #eef5ff 50%, #f8f8fa 100%);
+    border: 1px solid #d7e5fb;
+    border-radius: 28px;
+    padding: 46px 48px;
     margin-bottom: 24px;
     position: relative;
     overflow: hidden;
+    box-shadow: 0 28px 60px rgba(15, 23, 42, 0.08);
 }
+
 .dash-header::before {
     content: '';
     position: absolute;
-    top: -60px; right: -60px;
-    width: 200px; height: 200px;
-    background: radial-gradient(circle, rgba(56,189,248,0.12) 0%, transparent 70%);
+    width: 360px;
+    height: 360px;
+    top: -190px;
+    right: -120px;
+    background: radial-gradient(circle, rgba(0, 113, 227, 0.18), rgba(0, 113, 227, 0.01));
     border-radius: 50%;
 }
-.dash-header::after {
-    content: '';
-    position: absolute;
-    bottom: -40px; left: 30%;
-    width: 300px; height: 100px;
-    background: radial-gradient(ellipse, rgba(16,185,129,0.07) 0%, transparent 70%);
-}
+
 .dash-title {
-    font-size: 2.4rem;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    background: linear-gradient(90deg, #38bdf8, #10b981, #38bdf8);
-    background-size: 200%;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin: 0 0 6px 0;
-    animation: shimmer 4s linear infinite;
-}
-@keyframes shimmer {
-    0% { background-position: 0% }
-    100% { background-position: 200% }
-}
-.dash-subtitle {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.78rem;
-    color: #64748b;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
+    font-size: clamp(2rem, 3.2vw, 3.4rem);
+    line-height: 1.05;
+    letter-spacing: -0.04em;
     margin: 0;
+    color: var(--apple-text);
+    font-weight: 700;
 }
 
-/* ── Metric Cards ── */
-.metric-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 16px;
-    margin-bottom: 24px;
-}
-.metric-card {
-    background: linear-gradient(135deg, #0d1b2a, #0f2033);
-    border: 1px solid #1e3a5f;
-    border-radius: 12px;
-    padding: 20px 24px;
-    position: relative;
-    overflow: hidden;
-    transition: border-color 0.2s, transform 0.2s;
-}
-.metric-card:hover {
-    border-color: #38bdf8;
-    transform: translateY(-2px);
-}
-.metric-card::after {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, #38bdf8, transparent);
-}
-.metric-label {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.68rem;
+.dash-subtitle {
+    margin: 0 0 12px 0;
+    color: var(--apple-blue);
+    font-size: 0.82rem;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: #475569;
+    font-weight: 600;
+}
+
+.metric-card {
+    background: rgba(255, 255, 255, 0.88);
+    border: 1px solid var(--apple-border);
+    border-radius: 20px;
+    padding: 18px 20px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.metric-label {
+    color: var(--apple-muted);
+    font-size: 0.74rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
     margin-bottom: 8px;
 }
+
 .metric-value {
-    font-size: 1.6rem;
-    font-weight: 700;
-    color: #f1f5f9;
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--apple-text);
+    font-size: 1.45rem;
+    font-weight: 650;
     letter-spacing: -0.02em;
 }
-.metric-delta {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem;
-    margin-top: 4px;
-}
-.up   { color: #10b981; }
-.down { color: #f43f5e; }
-.neutral { color: #64748b; }
 
-/* ── Section Headers ── */
+.metric-delta {
+    margin-top: 6px;
+    font-size: 0.8rem;
+    font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+}
+
+.up { color: var(--apple-green); }
+.down { color: var(--apple-red); }
+.neutral { color: var(--apple-muted); }
+
 .section-header {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin: 28px 0 16px 0;
+    gap: 12px;
+    margin: 30px 0 14px;
 }
+
 .section-header h3 {
-    font-size: 0.72rem;
-    font-family: 'JetBrains Mono', monospace;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: #38bdf8;
     margin: 0;
+    color: var(--apple-text);
+    font-size: 0.85rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 620;
 }
+
 .section-line {
     flex: 1;
     height: 1px;
-    background: linear-gradient(90deg, #1e3a5f, transparent);
+    background: linear-gradient(90deg, rgba(0, 113, 227, 0.35), rgba(0, 113, 227, 0));
 }
 
-/* ── Chart containers ── */
-.chart-container {
-    background: #0d1b2a;
-    border: 1px solid #1e3a5f;
-    border-radius: 12px;
-    padding: 4px;
-    margin-bottom: 20px;
-}
-
-/* ── Forecast table ── */
 .forecast-row {
     display: grid;
-    grid-template-columns: 100px 1fr 80px;
+    grid-template-columns: 110px 1fr 90px;
     gap: 12px;
-    padding: 10px 16px;
-    border-bottom: 1px solid #0f2033;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.82rem;
-    align-items: center;
-    transition: background 0.15s;
+    padding: 10px 14px;
+    border-bottom: 1px solid #ececf1;
+    border-radius: 12px;
+    color: var(--apple-text);
+    font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+    font-size: 0.8rem;
 }
-.forecast-row:hover { background: #0f2033; border-radius: 8px; }
+
+.forecast-row:hover {
+    background: #f8faff;
+}
+
 .forecast-header {
-    color: #38bdf8;
-    font-size: 0.68rem;
-    letter-spacing: 0.1em;
+    color: var(--apple-blue);
+    border-bottom: 1px solid #d7e5fb;
+    margin-bottom: 5px;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    padding-bottom: 6px;
-    border-bottom: 1px solid #1e3a5f;
-    margin-bottom: 4px;
+    font-size: 0.68rem;
 }
 
-/* ── Accuracy badges ── */
 .badge {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem;
-    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 0.7rem;
+    border: 1px solid transparent;
+    font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
 }
-.badge-green  { background: #052e16; color: #4ade80; border: 1px solid #166534; }
-.badge-yellow { background: #1c1003; color: #fbbf24; border: 1px solid #854d0e; }
-.badge-red    { background: #1c0610; color: #f87171; border: 1px solid #991b1b; }
 
-/* ── Streamlit overrides ── */
-.stSlider > div > div { background: #1e3a5f !important; }
-div[data-testid="stMetric"] {
-    background: #0d1b2a;
-    border: 1px solid #1e3a5f;
-    border-radius: 10px;
-    padding: 16px;
-}
-.stSelectbox > div, .stMultiSelect > div {
-    background: #0d1b2a !important;
-    border-color: #1e3a5f !important;
-}
-h1, h2, h3 { color: #e2e8f0; }
-.stMarkdown p { color: #94a3b8; }
+.badge-green  { background: #ecfdf3; color: #107c41; border-color: #c3f0d5; }
+.badge-yellow { background: #fff6e9; color: #9a5d00; border-color: #ffe0b8; }
+.badge-red    { background: #fff1f0; color: #b42318; border-color: #ffd2cf; }
 
-/* status pill */
 .status-live {
-    display: inline-flex; align-items: center; gap: 6px;
-    background: #052e16; color: #4ade80;
-    border: 1px solid #166534;
-    border-radius: 20px; padding: 4px 14px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.72rem; letter-spacing: 0.08em;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    border-radius: 999px;
+    padding: 5px 13px;
+    color: #05603a;
+    background: #ecfdf3;
+    border: 1px solid #c5ecd5;
+    font-size: 0.74rem;
+    font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
 }
-.dot { width:7px; height:7px; border-radius:50%;
-       background:#4ade80; animation: pulse 1.5s infinite; }
+
+.dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--apple-green);
+    animation: pulse 1.4s infinite;
+}
+
 @keyframes pulse {
     0%, 100% { opacity: 1; transform: scale(1); }
-    50%       { opacity: 0.4; transform: scale(0.8); }
+    50% { opacity: 0.45; transform: scale(0.76); }
+}
+
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background: #f2f4f8;
+    border: 1px solid #d9dde7;
+    border-radius: 999px;
+    color: #1d1d1f;
+    padding: 8px 16px;
+    height: auto;
+}
+
+.stTabs [aria-selected="true"] {
+    background: var(--apple-blue) !important;
+    color: #ffffff !important;
+    border-color: var(--apple-blue) !important;
+}
+
+.stSlider > div > div {
+    background: var(--apple-blue) !important;
+}
+
+.stSelectbox > div,
+.stMultiSelect > div,
+.stTextInput > div > div {
+    border-radius: 12px !important;
+}
+
+.stDataFrame {
+    background: rgba(255, 255, 255, 0.86);
+    border: 1px solid var(--apple-border);
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.stMarkdown p {
+    color: #424245;
+}
+
+@media (max-width: 900px) {
+    .dash-header {
+        padding: 34px 26px;
+        border-radius: 22px;
+    }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -251,6 +276,13 @@ MODEL_FILES = {
     'GRU': ['gru_model.h5'],
     'Transformer': ['transformer_model.keras', 'transformer_model.h5'],
     'CNN+LSTM': ['cnn_lstm_model.keras'],
+}
+
+MODEL_COLORS = {
+    'LSTM': '#0071e3',
+    'GRU': '#34c759',
+    'Transformer': '#5e5ce6',
+    'CNN+LSTM': '#ff9f0a',
 }
 
 
@@ -318,9 +350,30 @@ def add_indicators(df):
     df['BB_lower'] = df['MA20'] - 2 * df['Close'].rolling(20).std()
     ema12 = df['Close'].ewm(span=12).mean()
     ema26 = df['Close'].ewm(span=26).mean()
-    df['MACD']        = ema12 - ema26
+    df['MACD'] = ema12 - ema26
     df['MACD_signal'] = df['MACD'].ewm(span=9).mean()
     return df
+
+
+def style_plotly(fig, height=420, y_tick_prefix=None):
+    fig.update_layout(
+        paper_bgcolor='#ffffff',
+        plot_bgcolor='#ffffff',
+        font=dict(family='-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif', color='#1d1d1f', size=12),
+        legend=dict(
+            bgcolor='rgba(255,255,255,0.88)',
+            bordercolor='#d2d2d7',
+            borderwidth=1,
+            font=dict(color='#424245', size=11),
+        ),
+        hovermode='x unified',
+        margin=dict(l=10, r=10, t=18, b=10),
+        height=height,
+    )
+    fig.update_xaxes(gridcolor='#ececf1', tickfont=dict(color='#6e6e73'))
+    fig.update_yaxes(gridcolor='#ececf1', tickfont=dict(color='#6e6e73'))
+    if y_tick_prefix:
+        fig.update_yaxes(tickprefix=y_tick_prefix)
 
 
 # ══════════════════════════════════════════════════════════
@@ -338,6 +391,10 @@ y_pred = None
 best_model_name = None
 model_predictions = {}
 model_metrics_df = pd.DataFrame()
+rolling_mape_df = pd.DataFrame()
+pairwise_mae_df = pd.DataFrame()
+improvement_df = pd.DataFrame()
+baseline_model_name = None
 
 if data_ok:
     target_scaler = processed['target_scaler']
@@ -366,6 +423,27 @@ if data_ok:
     y_pred = model_predictions[selected_model_name]
     df_ind = add_indicators(df_raw)
 
+    rolling_mape_df = pd.DataFrame({
+        name: pd.Series(np.abs((y_actual - pred) / np.clip(np.abs(y_actual), 1e-8, None)) * 100).rolling(30).mean()
+        for name, pred in model_predictions.items()
+    })
+
+    model_order = list(model_metrics_df.index)
+    pairwise_mae_df = pd.DataFrame(index=model_order, columns=model_order, dtype=float)
+    for left_model in model_order:
+        for right_model in model_order:
+            pairwise_mae_df.loc[left_model, right_model] = float(
+                np.mean(np.abs(model_predictions[left_model] - model_predictions[right_model]))
+            )
+
+    baseline_model_name = 'LSTM' if 'LSTM' in model_metrics_df.index else best_model_name
+    baseline_mae = model_metrics_df.loc[baseline_model_name, 'MAE']
+    baseline_mape = model_metrics_df.loc[baseline_model_name, 'MAPE']
+
+    improvement_df = model_metrics_df.copy()
+    improvement_df['MAE vs Baseline %'] = (baseline_mae - improvement_df['MAE']) / baseline_mae * 100
+    improvement_df['MAPE vs Baseline %'] = (baseline_mape - improvement_df['MAPE']) / baseline_mape * 100
+
 
 # ══════════════════════════════════════════════════════════
 #  SIDEBAR
@@ -375,7 +453,8 @@ with st.sidebar:
     st.markdown("---")
 
     n_forecast = st.slider("📅 Forecast Days", 7, 60, 30, step=1)
-    lookback   = st.slider("🔭 Chart Lookback (days)", 60, 500, 200, step=10)
+    lookback = st.slider("🔭 Chart Lookback (days)", 60, 500, 200, step=10)
+    benchmark_window = st.slider("📐 Benchmark Window", 20, 90, 30, step=5)
 
     st.markdown("---")
     st.markdown("### 📊 Chart Layers")
@@ -407,7 +486,7 @@ with st.sidebar:
         unsafe_allow_html=True
     )
     st.markdown(
-        f"<p style='font-family:JetBrains Mono;font-size:0.68rem;color:#334155;"
+        f"<p style='font-family:SF Mono, Menlo, monospace;font-size:0.68rem;color:#6e6e73;"
         f"margin-top:10px'>Updated · {datetime.now().strftime('%d %b %Y %H:%M')}</p>",
         unsafe_allow_html=True
     )
@@ -420,10 +499,10 @@ active_model_label = selected_model_name if selected_model_name else "No model l
 
 st.markdown(f"""
 <div class="dash-header">
-  <p class="dash-subtitle">Deep Learning · Time-Series · NSE India</p>
-    <h1 class="dash-title">Nifty 50 Multi-Model Predictor</h1>
-  <p style="color:#475569;font-size:0.85rem;margin:0;font-family:'JetBrains Mono',monospace">
-        Active Model · {active_model_label} · 11 Features · 60-Day Window
+  <p class="dash-subtitle">Market Intelligence Studio · NSE India</p>
+  <h1 class="dash-title">Nifty 50 Forecast Gallery</h1>
+  <p style="color:#6e6e73;font-size:0.9rem;margin:12px 0 0 0;font-family:'SF Mono',Menlo,monospace">
+    Active Model · {active_model_label} · 11 Features · 60-Step Window
   </p>
 </div>
 """, unsafe_allow_html=True)
@@ -504,11 +583,12 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════
 #  TAB LAYOUT
 # ══════════════════════════════════════════════════════════
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📈  Price & Prediction",
     "🔮  Future Forecast",
     "📊  Technical Indicators",
     "🧠  Model Performance",
+    "🏁  Model Benchmarks",
 ])
 
 
@@ -536,29 +616,23 @@ with tab1:
 
     fig1.add_trace(go.Scatter(
         x=d, y=a, name="Actual",
-        line=dict(color="#38bdf8", width=2),
+        line=dict(color="#1d1d1f", width=2.2),
         hovertemplate="<b>Actual</b><br>%{x|%d %b %Y}<br>₹%{y:,.2f}<extra></extra>"
     ))
     fig1.add_trace(go.Scatter(
         x=d, y=p, name=f"Predicted ({selected_model_name})",
-        line=dict(color="#10b981", width=2, dash="dot"),
+        line=dict(color=MODEL_COLORS.get(selected_model_name, '#0071e3'), width=2.2, dash="dot"),
         hovertemplate="<b>Predicted</b><br>%{x|%d %b %Y}<br>₹%{y:,.2f}<extra></extra>"
     ))
 
     if show_all_models:
-        model_colors = {
-            'LSTM': '#ff7f0e',
-            'GRU': '#2ca02c',
-            'Transformer': '#9467bd',
-            'CNN+LSTM': '#17becf',
-        }
         for model_name, pred_values in model_predictions.items():
             if model_name == selected_model_name:
                 continue
             fig1.add_trace(go.Scatter(
                 x=d, y=pred_values[-lb:], name=f"{model_name} (comparison)",
-                line=dict(color=model_colors.get(model_name, '#94a3b8'), width=1.5, dash='dash'),
-                opacity=0.8,
+                line=dict(color=MODEL_COLORS.get(model_name, '#6e6e73'), width=1.4, dash='dash'),
+                opacity=0.75,
                 hovertemplate=f"<b>{model_name}</b><br>%{{x|%d %b %Y}}<br>₹%{{y:,.2f}}<extra></extra>"
             ))
     fig1.add_trace(go.Scatter(
@@ -596,39 +670,21 @@ with tab1:
             hovertemplate="BB Lower: ₹%{y:,.0f}<extra></extra>"
         ))
 
-    fig1.update_layout(
-        paper_bgcolor='#0d1b2a', plot_bgcolor='#080c10',
-        font=dict(family='JetBrains Mono', color='#64748b', size=11),
-        xaxis=dict(gridcolor='#0f2033', showgrid=True, zeroline=False,
-                   tickfont=dict(color='#475569')),
-        yaxis=dict(gridcolor='#0f2033', showgrid=True, zeroline=False,
-                   tickprefix='₹', tickfont=dict(color='#475569')),
-        legend=dict(bgcolor='rgba(13,27,42,0.8)', bordercolor='#1e3a5f',
-                    borderwidth=1, font=dict(color='#94a3b8', size=11)),
-        hovermode='x unified',
-        height=440,
-        margin=dict(l=10, r=10, t=10, b=10)
-    )
+    style_plotly(fig1, height=440, y_tick_prefix='₹')
 
     st.plotly_chart(fig1, use_container_width=True)
 
     if show_volume and df_raw is not None:
         df_vol = df_raw.tail(lb)
-        colors = ['#10b981' if c >= o else '#f43f5e'
+        colors = ['#34c759' if c >= o else '#ff3b30'
                   for c, o in zip(df_vol['Close'], df_vol['Open'])]
         fig_vol = go.Figure(go.Bar(
             x=df_vol['Date'], y=df_vol['Volume'],
             marker_color=colors, opacity=0.7, name="Volume",
             hovertemplate="%{x|%d %b %Y}<br>Vol: %{y:,}<extra></extra>"
         ))
-        fig_vol.update_layout(
-            paper_bgcolor='#0d1b2a', plot_bgcolor='#080c10',
-            font=dict(family='JetBrains Mono', color='#64748b', size=11),
-            xaxis=dict(gridcolor='#0f2033', tickfont=dict(color='#475569')),
-            yaxis=dict(gridcolor='#0f2033', tickfont=dict(color='#475569')),
-            height=180, margin=dict(l=10, r=10, t=10, b=10),
-            showlegend=False
-        )
+        fig_vol.update_layout(showlegend=False)
+        style_plotly(fig_vol, height=200)
         st.plotly_chart(fig_vol, use_container_width=True)
 
 
@@ -690,21 +746,21 @@ with tab2:
 
     fig2.add_trace(go.Scatter(
         x=hist_dates, y=hist_close, name="Historical",
-        line=dict(color="#38bdf8", width=2),
+        line=dict(color="#1d1d1f", width=2.2),
         hovertemplate="%{x|%d %b %Y}<br>₹%{y:,.2f}<extra></extra>"
     ))
     fig2.add_trace(go.Scatter(
         x=future_dates, y=future_arr, name=f"{n_forecast}-Day Forecast ({selected_model_name})",
-        line=dict(color="#10b981", width=2.5, dash="dot"),
+        line=dict(color=MODEL_COLORS.get(selected_model_name, '#0071e3'), width=2.6, dash="dot"),
         mode='lines+markers',
-        marker=dict(size=4, color="#10b981"),
+        marker=dict(size=4, color=MODEL_COLORS.get(selected_model_name, '#0071e3')),
         hovertemplate="%{x|%d %b %Y}<br>₹%{y:,.2f}<extra></extra>"
     ))
     # Confidence band ±1.5%
     fig2.add_trace(go.Scatter(
         x=list(future_dates) + list(future_dates[::-1]),
         y=list(future_arr * 1.015) + list((future_arr * 0.985)[::-1]),
-        fill='toself', fillcolor='rgba(16,185,129,0.08)',
+        fill='toself', fillcolor='rgba(0,113,227,0.10)',
         line=dict(color='rgba(0,0,0,0)'), name="±1.5% Band",
         hoverinfo='skip'
     ))
@@ -712,7 +768,7 @@ with tab2:
     fig2.add_trace(go.Scatter(
         x=[hist_dates[-1], future_dates[0]],
         y=[hist_close[-1], future_arr[0]],
-        line=dict(color="#38bdf8", width=1.5, dash="dot"),
+        line=dict(color="#0071e3", width=1.5, dash="dot"),
         showlegend=False, hoverinfo='skip'
     ))
     fig2.add_shape(
@@ -735,16 +791,7 @@ with tab2:
         font=dict(color="#f59e0b", size=11)
     )
 
-    fig2.update_layout(
-        paper_bgcolor='#0d1b2a', plot_bgcolor='#080c10',
-        font=dict(family='JetBrains Mono', color='#64748b', size=11),
-        xaxis=dict(gridcolor='#0f2033', tickfont=dict(color='#475569')),
-        yaxis=dict(gridcolor='#0f2033', tickprefix='₹', tickfont=dict(color='#475569')),
-        legend=dict(bgcolor='rgba(13,27,42,0.8)', bordercolor='#1e3a5f', borderwidth=1,
-                    font=dict(color='#94a3b8', size=11)),
-        hovermode='x unified', height=420,
-        margin=dict(l=10, r=10, t=20, b=10)
-    )
+    style_plotly(fig2, height=420, y_tick_prefix='₹')
     st.plotly_chart(fig2, use_container_width=True)
 
     # Forecast table
@@ -867,18 +914,24 @@ with tab3:
             row=cur_row, col=1)
 
     fig3.update_layout(
-        paper_bgcolor='#0d1b2a', plot_bgcolor='#080c10',
-        font=dict(family='JetBrains Mono', color='#64748b', size=10),
-        xaxis=dict(gridcolor='#0f2033', rangeslider_visible=False),
-        yaxis=dict(gridcolor='#0f2033', tickprefix='₹'),
-        legend=dict(bgcolor='rgba(13,27,42,0.8)', bordercolor='#1e3a5f',
-                    borderwidth=1, font=dict(color='#94a3b8', size=10)),
-        height=600, margin=dict(l=10, r=10, t=30, b=10),
-        hovermode='x unified'
+        paper_bgcolor='#ffffff',
+        plot_bgcolor='#ffffff',
+        font=dict(family='-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif', color='#1d1d1f', size=11),
+        xaxis=dict(gridcolor='#ececf1', rangeslider_visible=False),
+        yaxis=dict(gridcolor='#ececf1', tickprefix='₹'),
+        legend=dict(
+            bgcolor='rgba(255,255,255,0.88)',
+            bordercolor='#d2d2d7',
+            borderwidth=1,
+            font=dict(color='#424245', size=10),
+        ),
+        height=620,
+        margin=dict(l=10, r=10, t=28, b=10),
+        hovermode='x unified',
     )
     for i in range(2, rows + 1):
-        fig3.update_xaxes(gridcolor='#0f2033', row=i, col=1)
-        fig3.update_yaxes(gridcolor='#0f2033', row=i, col=1)
+        fig3.update_xaxes(gridcolor='#ececf1', row=i, col=1)
+        fig3.update_yaxes(gridcolor='#ececf1', row=i, col=1)
 
     st.plotly_chart(fig3, use_container_width=True)
 
@@ -900,18 +953,17 @@ with tab4:
         fig_err = go.Figure()
         fig_err.add_trace(go.Histogram(
             x=errors, nbinsx=40, name="Prediction Error",
-            marker_color='#38bdf8', opacity=0.75,
+            marker_color=MODEL_COLORS.get(selected_model_name, '#0071e3'), opacity=0.78,
             hovertemplate="Error: ₹%{x:,.0f}<br>Count: %{y}<extra></extra>"
         ))
-        fig_err.add_vline(x=0, line_dash="dash", line_color="#f59e0b", line_width=1.5)
+        fig_err.add_vline(x=0, line_dash="dash", line_color="#ff9f0a", line_width=1.4)
         fig_err.update_layout(
-            title=dict(text="Error Distribution", font=dict(color='#94a3b8', size=12)),
-            paper_bgcolor='#0d1b2a', plot_bgcolor='#080c10',
-            font=dict(family='JetBrains Mono', color='#64748b', size=10),
-            xaxis=dict(gridcolor='#0f2033', tickprefix='₹', title="Error (₹)"),
-            yaxis=dict(gridcolor='#0f2033', title="Frequency"),
-            height=320, margin=dict(l=10, r=10, t=40, b=10), showlegend=False
+            title=dict(text="Error Distribution", font=dict(color='#1d1d1f', size=12)),
+            xaxis=dict(title="Error (₹)"),
+            yaxis=dict(title="Frequency"),
+            showlegend=False,
         )
+        style_plotly(fig_err, height=320)
         st.plotly_chart(fig_err, use_container_width=True)
 
     with c2:
@@ -919,26 +971,22 @@ with tab4:
         fig_sc = go.Figure()
         fig_sc.add_trace(go.Scatter(
             x=y_actual, y=y_pred, mode='markers',
-            marker=dict(color='#38bdf8', size=4, opacity=0.5),
+            marker=dict(color=MODEL_COLORS.get(selected_model_name, '#0071e3'), size=4, opacity=0.55),
             name="Predictions",
             hovertemplate="Actual: ₹%{x:,.0f}<br>Pred: ₹%{y:,.0f}<extra></extra>"
         ))
         lim = [min(y_actual.min(), y_pred.min()), max(y_actual.max(), y_pred.max())]
         fig_sc.add_trace(go.Scatter(
             x=lim, y=lim, mode='lines',
-            line=dict(color='#10b981', dash='dash', width=1.5),
+            line=dict(color='#1d1d1f', dash='dash', width=1.3),
             name="Perfect Fit"
         ))
         fig_sc.update_layout(
-            title=dict(text="Actual vs Predicted", font=dict(color='#94a3b8', size=12)),
-            paper_bgcolor='#0d1b2a', plot_bgcolor='#080c10',
-            font=dict(family='JetBrains Mono', color='#64748b', size=10),
-            xaxis=dict(gridcolor='#0f2033', tickprefix='₹', title="Actual (₹)"),
-            yaxis=dict(gridcolor='#0f2033', tickprefix='₹', title="Predicted (₹)"),
-            height=320, margin=dict(l=10, r=10, t=40, b=10),
-            legend=dict(bgcolor='rgba(13,27,42,0.8)', bordercolor='#1e3a5f',
-                        font=dict(color='#94a3b8', size=10))
+            title=dict(text="Actual vs Predicted", font=dict(color='#1d1d1f', size=12)),
+            xaxis=dict(title="Actual (₹)"),
+            yaxis=dict(title="Predicted (₹)"),
         )
+        style_plotly(fig_sc, height=320)
         st.plotly_chart(fig_sc, use_container_width=True)
 
     # Rolling MAPE
@@ -955,21 +1003,20 @@ with tab4:
     fig_rm = go.Figure()
     fig_rm.add_trace(go.Scatter(
         y=rolling_mape, mode='lines', name="Rolling MAPE",
-        line=dict(color="#f59e0b", width=2),
-        fill='tozeroy', fillcolor='rgba(245,158,11,0.08)',
+        line=dict(color=MODEL_COLORS.get(selected_model_name, '#0071e3'), width=2),
+        fill='tozeroy', fillcolor='rgba(0,113,227,0.1)',
         hovertemplate="Day %{x}<br>MAPE: %{y:.2f}%<extra></extra>"
     ))
-    fig_rm.add_hline(y=2, line_dash="dash", line_color="#10b981",
+    fig_rm.add_hline(y=2, line_dash="dash", line_color="#34c759",
                      annotation_text="2% threshold",
-                     annotation_font_color="#10b981",
+                     annotation_font_color="#34c759",
                      annotation_font_size=10, line_width=1)
     fig_rm.update_layout(
-        paper_bgcolor='#0d1b2a', plot_bgcolor='#080c10',
-        font=dict(family='JetBrains Mono', color='#64748b', size=10),
-        xaxis=dict(gridcolor='#0f2033', title="Test Day"),
-        yaxis=dict(gridcolor='#0f2033', ticksuffix='%', title="MAPE"),
-        height=260, margin=dict(l=10, r=10, t=10, b=10), showlegend=False
+        xaxis=dict(title="Test Day"),
+        yaxis=dict(ticksuffix='%', title="MAPE"),
+        showlegend=False,
     )
+    style_plotly(fig_rm, height=270)
     st.plotly_chart(fig_rm, use_container_width=True)
 
     # Metrics summary table
@@ -1015,15 +1062,135 @@ with tab4:
     )
 
 
+# ── TAB 5 · Model Benchmarks ──────────────────────────────
+with tab5:
+    import plotly.graph_objects as go
+
+    st.markdown("""
+    <div class="section-header">
+      <h3>Cross-Model Benchmark Arena</h3>
+      <div class="section-line"></div>
+    </div>""", unsafe_allow_html=True)
+
+    recent_window = min(benchmark_window, len(y_actual))
+    recent_rows = []
+    for model_name in model_metrics_df.index:
+        recent_error = np.abs(
+            y_actual[-recent_window:] - model_predictions[model_name][-recent_window:]
+        )
+        recent_mape = float(np.mean(recent_error / np.clip(np.abs(y_actual[-recent_window:]), 1e-8, None)) * 100)
+        recent_rows.append((model_name, recent_mape))
+
+    recent_df = pd.DataFrame(recent_rows, columns=['Model', f'MAPE ({recent_window}d)']).sort_values(f'MAPE ({recent_window}d)')
+
+    bcol1, bcol2, bcol3 = st.columns(3)
+    for col, metric in zip([bcol1, bcol2, bcol3], ['RMSE', 'MAE', 'MAPE']):
+        with col:
+            mdf = model_metrics_df.sort_values(metric)
+            fig_metric = go.Figure(go.Bar(
+                x=mdf.index,
+                y=mdf[metric],
+                marker_color=[MODEL_COLORS.get(name, '#0071e3') for name in mdf.index],
+                text=[f"{v:.2f}" for v in mdf[metric]],
+                textposition='outside',
+                name=metric,
+            ))
+            fig_metric.update_layout(
+                title=dict(text=f"{metric} Comparison", font=dict(size=13, color='#1d1d1f')),
+                showlegend=False,
+                xaxis=dict(title='Model'),
+                yaxis=dict(title=metric),
+            )
+            style_plotly(fig_metric, height=320, y_tick_prefix='₹' if metric in ['RMSE', 'MAE'] else None)
+            if metric == 'MAPE':
+                fig_metric.update_yaxes(ticksuffix='%')
+            st.plotly_chart(fig_metric, use_container_width=True)
+
+    st.markdown("""
+    <div class="section-header">
+      <h3>Rolling MAPE by Model</h3>
+      <div class="section-line"></div>
+    </div>""", unsafe_allow_html=True)
+
+    fig_roll = go.Figure()
+    rolling_view = rolling_mape_df.tail(max(lookback, recent_window * 2))
+    for model_name in model_metrics_df.index:
+        fig_roll.add_trace(go.Scatter(
+            y=rolling_view[model_name],
+            mode='lines',
+            name=model_name,
+            line=dict(color=MODEL_COLORS.get(model_name, '#0071e3'), width=2),
+            hovertemplate=f"{model_name}<br>Day %{{x}}<br>MAPE: %{{y:.2f}}%<extra></extra>",
+        ))
+    fig_roll.update_layout(
+        xaxis=dict(title='Test Day'),
+        yaxis=dict(title='Rolling MAPE', ticksuffix='%'),
+    )
+    style_plotly(fig_roll, height=360)
+    st.plotly_chart(fig_roll, use_container_width=True)
+
+    st.markdown("""
+    <div class="section-header">
+      <h3>Model-to-Model Distance (MAE)</h3>
+      <div class="section-line"></div>
+    </div>""", unsafe_allow_html=True)
+
+    fig_heat = go.Figure(data=go.Heatmap(
+        z=pairwise_mae_df.values,
+        x=pairwise_mae_df.columns,
+        y=pairwise_mae_df.index,
+        colorscale=[
+            [0.0, '#eff4ff'],
+            [0.5, '#9ec5ff'],
+            [1.0, '#0071e3'],
+        ],
+        colorbar=dict(title='MAE'),
+        hovertemplate='Model X: %{x}<br>Model Y: %{y}<br>MAE gap: ₹%{z:,.2f}<extra></extra>',
+    ))
+    fig_heat.update_layout(
+        xaxis=dict(title='Compared Model'),
+        yaxis=dict(title='Reference Model'),
+    )
+    style_plotly(fig_heat, height=420)
+    st.plotly_chart(fig_heat, use_container_width=True)
+
+    st.markdown("""
+    <div class="section-header">
+      <h3>Baseline Benchmark (vs LSTM)</h3>
+      <div class="section-line"></div>
+    </div>""", unsafe_allow_html=True)
+
+    benchmark_table = improvement_df.copy()
+    benchmark_table['RMSE'] = benchmark_table['RMSE'].map(lambda x: f"₹{x:,.2f}")
+    benchmark_table['MAE'] = benchmark_table['MAE'].map(lambda x: f"₹{x:,.2f}")
+    benchmark_table['MAPE'] = benchmark_table['MAPE'].map(lambda x: f"{x:.2f}%")
+    benchmark_table['MAE vs Baseline %'] = benchmark_table['MAE vs Baseline %'].map(lambda x: f"{x:+.2f}%")
+    benchmark_table['MAPE vs Baseline %'] = benchmark_table['MAPE vs Baseline %'].map(lambda x: f"{x:+.2f}%")
+    benchmark_table = benchmark_table.reset_index().rename(columns={'index': 'Model'})
+
+    st.caption(f"Baseline model: {baseline_model_name}")
+    st.dataframe(
+        benchmark_table,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.markdown("""
+    <div class="section-header">
+      <h3>Recent Window Leaderboard</h3>
+      <div class="section-line"></div>
+    </div>""", unsafe_allow_html=True)
+    st.dataframe(recent_df, use_container_width=True, hide_index=True)
+
+
 # ── Footer ────────────────────────────────────────────────
 st.markdown("""
 <br>
 <div style="text-align:center; padding: 20px 0;
-     border-top: 1px solid #1e2d3d; margin-top: 20px;">
-  <p style="font-family:'JetBrains Mono',monospace; font-size:0.68rem;
-     color:#334155; letter-spacing:0.1em">
-        NIFTY 50 MULTI-MODEL PREDICTOR · FOR EDUCATIONAL PURPOSES ONLY
-    · NOT FINANCIAL ADVICE
+     border-top: 1px solid #d2d2d7; margin-top: 20px;">
+  <p style="font-family:'SF Mono',Menlo,monospace; font-size:0.68rem;
+     color:#6e6e73; letter-spacing:0.08em">
+    NIFTY 50 MULTI-MODEL PREDICTOR · FOR EDUCATIONAL PURPOSES ONLY · NOT FINANCIAL ADVICE
   </p>
 </div>
 """, unsafe_allow_html=True)
