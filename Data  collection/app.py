@@ -246,6 +246,12 @@ h1, h2, h3 { color: #e2e8f0; }
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / 'data'
 MODELS_DIR = APP_DIR / 'models'
+MODEL_FILES = {
+    'LSTM': ['lstm_model.h5'],
+    'GRU': ['gru_model.h5'],
+    'Transformer': ['transformer_model.keras', 'transformer_model.h5'],
+    'CNN+LSTM': ['cnn_lstm_model.keras'],
+}
 
 
 # ══════════════════════════════════════════════════════════
@@ -253,21 +259,24 @@ MODELS_DIR = APP_DIR / 'models'
 # ══════════════════════════════════════════════════════════
 
 @st.cache_resource(show_spinner=False)
-def load_model_keras():
+def load_models():
     try:
         from tensorflow.keras.models import load_model
-        return load_model(MODELS_DIR / 'lstm_model.h5')
     except Exception:
-        return None
+        return {}
 
-@st.cache_data(show_spinner=False)
-def load_artifacts():
-    # Artifacts are stored inside processed_data.pkl — no separate file needed
-    try:
-        with open(DATA_DIR / 'processed_data.pkl', 'rb') as f:
-            return pickle.load(f)
-    except Exception:
-        return None
+    loaded = {}
+    for name, candidates in MODEL_FILES.items():
+        for rel_path in candidates:
+            model_path = MODELS_DIR / rel_path
+            if not model_path.exists():
+                continue
+            try:
+                loaded[name] = load_model(model_path, compile=False)
+                break
+            except Exception:
+                continue
+    return loaded
 
 @st.cache_data(show_spinner=False)
 def load_processed():
@@ -317,22 +326,45 @@ def add_indicators(df):
 # ══════════════════════════════════════════════════════════
 #  LOAD DATA
 # ══════════════════════════════════════════════════════════
-model      = load_model_keras()
-processed  = load_processed()
-artifacts  = processed   # same dict — avoids loading twice
-df_raw     = load_raw()
+models = load_models()
+processed = load_processed()
+df_raw = load_raw()
 
-data_ok = all([model, artifacts, processed, df_raw is not None])
+data_ok = bool(models) and (processed is not None) and (df_raw is not None)
+
+selected_model_name = None
+selected_model = None
+y_pred = None
+best_model_name = None
+model_predictions = {}
+model_metrics_df = pd.DataFrame()
 
 if data_ok:
-    target_scaler  = processed['target_scaler']
-    X_test         = processed['X_test']
-    y_test         = processed['y_test']
-    # Re-generate predictions from the loaded model so we never need a cached artifact file
-    _y_pred_scaled = model.predict(X_test, verbose=0)
-    y_pred   = target_scaler.inverse_transform(_y_pred_scaled).reshape(-1)
+    target_scaler = processed['target_scaler']
+    X_test = processed['X_test']
+    y_test = processed['y_test']
     y_actual = target_scaler.inverse_transform(y_test.reshape(-1, 1)).reshape(-1)
-    df_ind         = add_indicators(df_raw)
+
+    from sklearn.metrics import mean_squared_error, mean_absolute_error
+
+    model_metrics = {}
+    for name, model_obj in models.items():
+        pred_scaled = model_obj.predict(X_test, verbose=0)
+        pred = target_scaler.inverse_transform(pred_scaled).reshape(-1)
+        model_predictions[name] = pred
+
+        model_metrics[name] = {
+            'RMSE': float(np.sqrt(mean_squared_error(y_actual, pred))),
+            'MAE': float(mean_absolute_error(y_actual, pred)),
+            'MAPE': float(np.mean(np.abs((y_actual - pred) / np.clip(np.abs(y_actual), 1e-8, None))) * 100),
+        }
+
+    model_metrics_df = pd.DataFrame(model_metrics).T.sort_values('MAPE')
+    best_model_name = model_metrics_df.index[0]
+    selected_model_name = best_model_name
+    selected_model = models[selected_model_name]
+    y_pred = model_predictions[selected_model_name]
+    df_ind = add_indicators(df_raw)
 
 
 # ══════════════════════════════════════════════════════════
@@ -350,6 +382,19 @@ with st.sidebar:
     show_ma     = st.checkbox("Moving Averages (MA20 / MA50)", value=True)
     show_bb     = st.checkbox("Bollinger Bands", value=True)
     show_volume = st.checkbox("Volume Bars", value=True)
+    show_all_models = st.checkbox("Overlay all model predictions", value=True)
+
+    if data_ok:
+        st.markdown("---")
+        selected_model_name = st.selectbox(
+            "🤖 Active Model",
+            options=list(model_metrics_df.index),
+            index=0,
+            help="Models are ranked by MAPE from model_train outputs.",
+        )
+        selected_model = models[selected_model_name]
+        y_pred = model_predictions[selected_model_name]
+        st.caption(f"Best model by MAPE: {best_model_name}")
 
     st.markdown("---")
     st.markdown("### 🔮 Indicators")
@@ -371,12 +416,14 @@ with st.sidebar:
 # ══════════════════════════════════════════════════════════
 #  HEADER
 # ══════════════════════════════════════════════════════════
-st.markdown("""
+active_model_label = selected_model_name if selected_model_name else "No model loaded"
+
+st.markdown(f"""
 <div class="dash-header">
   <p class="dash-subtitle">Deep Learning · Time-Series · NSE India</p>
-  <h1 class="dash-title">Nifty 50 LSTM Predictor</h1>
+    <h1 class="dash-title">Nifty 50 Multi-Model Predictor</h1>
   <p style="color:#475569;font-size:0.85rem;margin:0;font-family:'JetBrains Mono',monospace">
-    LSTM Neural Network · 11 Features · 60-Day Window
+        Active Model · {active_model_label} · 11 Features · 60-Day Window
   </p>
 </div>
 """, unsafe_allow_html=True)
@@ -386,9 +433,9 @@ st.markdown("""
 #  GUARD — missing files
 # ══════════════════════════════════════════════════════════
 if not data_ok:
-    st.error("⚠️  Model or data files not found. Please complete Steps 2–5 first.")
+    st.error("⚠️  Model or data files not found. Please complete training/prediction steps first.")
     missing = []
-    if model     is None: missing.append("`models/lstm_model.h5`")
+    if not models: missing.append("`models/` (no loadable model files found)")
     if processed is None: missing.append("`data/processed_data.pkl`")
     if df_raw    is None: missing.append("`data/nifty50_raw.csv`")
     st.markdown("**Missing files:**\n" + "\n".join(f"- {m}" for m in missing))
@@ -398,11 +445,10 @@ if not data_ok:
 # ══════════════════════════════════════════════════════════
 #  METRIC CARDS
 # ══════════════════════════════════════════════════════════
-from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 rmse = float(np.sqrt(mean_squared_error(y_actual, y_pred)))
 mae  = float(mean_absolute_error(y_actual, y_pred))
-mape = float(np.mean(np.abs((y_actual - y_pred) / y_actual)) * 100)
+mape = float(np.mean(np.abs((y_actual - y_pred) / np.clip(np.abs(y_actual), 1e-8, None))) * 100)
 r2   = float(1 - np.sum((y_actual - y_pred)**2) / np.sum((y_actual - np.mean(y_actual))**2))
 
 current_price = float(y_actual[-1])
@@ -427,7 +473,7 @@ with col2:
     cls   = "up" if delta_pct >= 0 else "down"
     st.markdown(f"""
     <div class="metric-card">
-      <div class="metric-label">Last Prediction</div>
+            <div class="metric-label">Last Prediction · {selected_model_name}</div>
       <div class="metric-value">₹{last_pred:,.0f}</div>
       <div class="metric-delta {cls}">{arrow} {abs(delta_pct):.2f}% vs actual</div>
     </div>""", unsafe_allow_html=True)
@@ -494,10 +540,27 @@ with tab1:
         hovertemplate="<b>Actual</b><br>%{x|%d %b %Y}<br>₹%{y:,.2f}<extra></extra>"
     ))
     fig1.add_trace(go.Scatter(
-        x=d, y=p, name="Predicted",
+        x=d, y=p, name=f"Predicted ({selected_model_name})",
         line=dict(color="#10b981", width=2, dash="dot"),
         hovertemplate="<b>Predicted</b><br>%{x|%d %b %Y}<br>₹%{y:,.2f}<extra></extra>"
     ))
+
+    if show_all_models:
+        model_colors = {
+            'LSTM': '#ff7f0e',
+            'GRU': '#2ca02c',
+            'Transformer': '#9467bd',
+            'CNN+LSTM': '#17becf',
+        }
+        for model_name, pred_values in model_predictions.items():
+            if model_name == selected_model_name:
+                continue
+            fig1.add_trace(go.Scatter(
+                x=d, y=pred_values[-lb:], name=f"{model_name} (comparison)",
+                line=dict(color=model_colors.get(model_name, '#94a3b8'), width=1.5, dash='dash'),
+                opacity=0.8,
+                hovertemplate=f"<b>{model_name}</b><br>%{{x|%d %b %Y}}<br>₹%{{y:,.2f}}<extra></extra>"
+            ))
     fig1.add_trace(go.Scatter(
         x=np.concatenate([d, d[::-1]]),
         y=np.concatenate([a * 1.01, (a * 0.99)[::-1]]),
@@ -577,9 +640,9 @@ with tab2:
       <div class="section-line"></div>
     </div>""", unsafe_allow_html=True)
 
-    with st.spinner(f"🔮 Computing {n_forecast}-day forecast…"):
+    with st.spinner(f"🔮 Computing {n_forecast}-day forecast ({selected_model_name})…"):
         last_seq    = X_test[-1]
-        future_pred = forecast_future(model, last_seq, target_scaler, n_forecast)
+        future_pred = forecast_future(selected_model, last_seq, target_scaler, n_forecast)
 
     # Build dates
     last_date    = pd.to_datetime(df_raw['Date'].iloc[-1])
@@ -631,7 +694,7 @@ with tab2:
         hovertemplate="%{x|%d %b %Y}<br>₹%{y:,.2f}<extra></extra>"
     ))
     fig2.add_trace(go.Scatter(
-        x=future_dates, y=future_arr, name=f"{n_forecast}-Day Forecast",
+        x=future_dates, y=future_arr, name=f"{n_forecast}-Day Forecast ({selected_model_name})",
         line=dict(color="#10b981", width=2.5, dash="dot"),
         mode='lines+markers',
         marker=dict(size=4, color="#10b981"),
@@ -719,12 +782,14 @@ with tab2:
     # Download CSV
     forecast_df = pd.DataFrame({
         'Date': future_dates,
-        'Predicted_Close': [round(p, 2) for p in future_pred]
+        'Predicted_Close': [round(p, 2) for p in future_pred],
+        'Model': selected_model_name,
     })
     csv = forecast_df.to_csv(index=False).encode()
+    safe_model_name = selected_model_name.lower().replace('+', 'plus').replace(' ', '_')
     st.download_button(
         "⬇️  Download Forecast CSV", csv,
-        file_name=f"nifty50_forecast_{n_forecast}d.csv",
+        file_name=f"nifty50_{safe_model_name}_forecast_{n_forecast}d.csv",
         mime="text/csv"
     )
 
@@ -820,11 +885,11 @@ with tab3:
 
 # ── TAB 4 · Model Performance ─────────────────────────────
 with tab4:
-    st.markdown("""
-    <div class="section-header">
-      <h3>Model Performance Analysis</h3>
-      <div class="section-line"></div>
-    </div>""", unsafe_allow_html=True)
+    st.markdown(f"""
+        <div class="section-header">
+            <h3>Model Performance Analysis · {selected_model_name}</h3>
+            <div class="section-line"></div>
+        </div>""", unsafe_allow_html=True)
 
     # Error distribution
     errors = y_actual - y_pred
@@ -884,7 +949,7 @@ with tab4:
     </div>""", unsafe_allow_html=True)
 
     rolling_mape = pd.Series(
-        np.abs((y_actual - y_pred) / y_actual) * 100
+        np.abs((y_actual - y_pred) / np.clip(np.abs(y_actual), 1e-8, None)) * 100
     ).rolling(30).mean()
 
     fig_rm = go.Figure()
@@ -938,6 +1003,17 @@ with tab4:
         hide_index=True
     )
 
+    st.markdown("""
+    <div class="section-header">
+      <h3>All Model Leaderboard</h3>
+      <div class="section-line"></div>
+    </div>""", unsafe_allow_html=True)
+    st.dataframe(
+        model_metrics_df.round(3).reset_index().rename(columns={'index': 'Model'}),
+        use_container_width=True,
+        hide_index=True,
+    )
+
 
 # ── Footer ────────────────────────────────────────────────
 st.markdown("""
@@ -946,7 +1022,7 @@ st.markdown("""
      border-top: 1px solid #1e2d3d; margin-top: 20px;">
   <p style="font-family:'JetBrains Mono',monospace; font-size:0.68rem;
      color:#334155; letter-spacing:0.1em">
-    NIFTY 50 LSTM PREDICTOR · FOR EDUCATIONAL PURPOSES ONLY
+        NIFTY 50 MULTI-MODEL PREDICTOR · FOR EDUCATIONAL PURPOSES ONLY
     · NOT FINANCIAL ADVICE
   </p>
 </div>
