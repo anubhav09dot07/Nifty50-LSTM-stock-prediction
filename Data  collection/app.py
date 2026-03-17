@@ -270,8 +270,23 @@ body,
     border-color: var(--apple-blue) !important;
 }
 
-.stSlider > div > div {
+[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] > div {
+    background: #e7ebf0 !important;
+    height: 6px !important;
+    border-radius: 999px !important;
+}
+
+[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] > div > div {
     background: var(--apple-blue) !important;
+    border-radius: 999px !important;
+}
+
+[data-testid="stSidebar"] .stSlider [role="slider"] {
+    background: #ffffff !important;
+    border: 2px solid var(--apple-blue) !important;
+    width: 14px !important;
+    height: 14px !important;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.2) !important;
 }
 
 .stSelectbox > div,
